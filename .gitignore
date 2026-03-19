@@ -1,0 +1,10 @@
+model_final.pth
+*.pkl
+*.log
+index/
+extracted_data/
+raw/
+test_out/
+.ipynb_checkpoints/
+__pycache__/
+*.pth

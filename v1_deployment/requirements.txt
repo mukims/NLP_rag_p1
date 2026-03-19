@@ -1,0 +1,7 @@
+streamlit
+torch
+chromadb
+rank_bm25
+open_clip_torch
+ollama
+Pillow
