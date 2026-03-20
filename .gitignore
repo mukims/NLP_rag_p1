@@ -3,7 +3,7 @@ model_final.pth
 *.log
 index/
 extracted_data/
-raw/
+#raw/
 test_out/
 .ipynb_checkpoints/
 __pycache__/
