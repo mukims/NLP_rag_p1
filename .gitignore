@@ -3,8 +3,12 @@ model_final.pth
 *.log
 index/
 extracted_data/
-#raw/
 test_out/
 .ipynb_checkpoints/
 __pycache__/
 *.pth
+
+# Data
+*.pdf
+*.bin
+*.sqlite3

@@ -1,0 +1,11 @@
+# Pulled PDFs
+pulled_pdfs/
+
+# Temporary data / Vector DB
+physics_vectordb/
+bm25_index.pkl
+downloaded.json
+
+# Cache
+__pycache__/
+*.pyc
