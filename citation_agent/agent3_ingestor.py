@@ -11,6 +11,9 @@ import chromadb
 import pickle
 from rank_bm25 import BM25Okapi
 import layoutparser as lp
+import argparse
+import concurrent.futures
+import multiprocessing
 
 try:
     from langchain_ollama import OllamaEmbeddings
@@ -47,113 +50,140 @@ def clean_text(text):
     text = re.sub(r'\s+', ' ', text)
     return text.strip()
 
-def main():
-    with open("downloaded.json", "r") as f:
-        downloaded = json.load(f)
-        
-    print("Loading Layout Model...")
-    detecteon_weights = os.path.abspath("../model_final.pth")
-    model = lp.Detectron2LayoutModel(
-        config_path='lp://PubLayNet/mask_rcnn_X_101_32x8d_FPN_3x/config',
-        model_path=detecteon_weights,
-        extra_config=["MODEL.ROI_HEADS.SCORE_THRESH_TEST", 0.5],
-        label_map={0: "Text", 1: "Title", 2: "List", 3: "Table", 4: "Figure"}
-    )
-    
-    images_dir = "../extracted_data/images"
-    os.makedirs(images_dir, exist_ok=True)
-    
+def process_pdf_file(pdf_path, citation_string, detectron_weights, images_dir):
+    print(f"Processing pages for {pdf_path}...")
     corpus = []
     dpi = 200
     zoom = dpi / 72.0
     
-    for pdf_path, citation_string in downloaded.items():
-        if not os.path.exists(pdf_path):
-            continue
-            
-        print(f"Processing pages for {pdf_path}...")
-        try:
-            pdf = fitz.open(pdf_path)
-            doc_name = os.path.basename(pdf_path)
-            pdf_name = doc_name.strip().replace(" ","_").lower()
-            
-            for page_idx in tqdm(range(len(pdf)), desc="Processing Pages", unit="page"):
-                page = pdf[page_idx]
-                pix = page.get_pixmap(dpi=dpi)
-                img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
+    # Init model inside worker for CUDA compatibility
+    model = lp.Detectron2LayoutModel(
+        config_path='lp://PubLayNet/mask_rcnn_X_101_32x8d_FPN_3x/config',
+        model_path=detectron_weights,
+        extra_config=["MODEL.ROI_HEADS.SCORE_THRESH_TEST", 0.5],
+        label_map={0: "Text", 1: "Title", 2: "List", 3: "Table", 4: "Figure"}
+    )
 
-                if pix.n == 4:
-                    img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
-                else:
-                    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    try:
+        pdf = fitz.open(pdf_path)
+        doc_name = os.path.basename(pdf_path)
+        pdf_name = doc_name.strip().replace(" ","_").lower()
+        
+        for page_idx in range(len(pdf)):
+            page = pdf[page_idx]
+            pix = page.get_pixmap(dpi=dpi)
+            img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
 
-                layout = model.detect(img)
-                raw_blocks = page.get_text("blocks")
-                text_blovk_img = []
+            if pix.n == 4:
+                img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+            else:
+                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
-                for b in raw_blocks:
-                    if b[6] == 0:
-                        tx1, ty1, tx2, ty2 = [c * zoom for c in b[:4]]
-                        text = b[4].replace('\n', ' ')
-                        text_blovk_img.append({
-                            'bbox': (tx1, ty1, tx2, ty2),
-                            'text': text.strip()
-                        })
-                        if len(text) > 4:
-                            corpus.append({
-                                "document": pdf_name,
-                                "citation": citation_string,
-                                "page": page_idx,
-                                "type": "text",
-                                "content": text
-                            })
+            layout = model.detect(img)
+            raw_blocks = page.get_text("blocks")
+            text_blovk_img = []
 
-                figures = [b for b in layout if b.type in ["Figure", "Table"]]
-
-                for i, fig in enumerate(figures):
-                    pad = 20
-                    x1, y1, x2, y2 = fig.coordinates
-                    x1 = max(0, int(x1 - pad))
-                    y1 = max(0, int(y1 - pad))
-                    x2 = min(img.shape[1], int(x2 + pad))
-                    y2 = min(img.shape[0], int(y2 + pad))
-                                
-                    cropped_img = img[y1:y2, x1:x2]
-                    out_name = f"{pdf_name}_p{page_idx}_f{i}.png"
-                    out_path = os.path.join(images_dir, out_name)
-                    cv2.imwrite(out_path, cropped_img)
-                                
-                    context = find_cap(text_blovk_img, (x1, y1, x2, y2), fig.type)
-
-                    try:
-                        formatted_prompt = f"You are analysing scientific plots. Describe this {fig.type.lower()}. Extract textual information, data and trends.\n\nSurrounding Document Context:\n{context}. Answer in 3-5 sentences at max.  "
-                        response = ollama.chat(
-                            model="gemma4:latest",
-                            messages=[{
-                                'role': 'user',
-                                'content': formatted_prompt,
-                                'images': [out_path] 
-                            }]
-                        )
-                        vlm_description = response['message']['content']
-                    except Exception as e:
-                        tqdm.write(f"Ollama failed on {out_name}: {e}")
-                        vlm_description = "Description generation failed."
-
-                    corpus.append({
-                        "document": pdf_name,
-                        "citation": citation_string,
-                        "page": page_idx,
-                        "type": fig.type.lower(),
-                        "content": vlm_description,
-                        "metadata": {
-                            "image_path": out_name,
-                            "caption": context
-                        }
+            for b in raw_blocks:
+                if b[6] == 0:
+                    tx1, ty1, tx2, ty2 = [c * zoom for c in b[:4]]
+                    text = b[4].replace('\n', ' ')
+                    text_blovk_img.append({
+                        'bbox': (tx1, ty1, tx2, ty2),
+                        'text': text.strip()
                     })
-        except Exception as e:
-            print(f"Failed to load or process {pdf_path}. Skipping. Error: {e}")
-            continue
+                    if len(text) > 4:
+                        corpus.append({
+                            "document": pdf_name,
+                            "citation": citation_string,
+                            "page": page_idx,
+                            "type": "text",
+                            "content": text
+                        })
+
+            figures = [b for b in layout if b.type in ["Figure", "Table"]]
+
+            for i, fig in enumerate(figures):
+                pad = 20
+                x1, y1, x2, y2 = fig.coordinates
+                x1 = max(0, int(x1 - pad))
+                y1 = max(0, int(y1 - pad))
+                x2 = min(img.shape[1], int(x2 + pad))
+                y2 = min(img.shape[0], int(y2 + pad))
+                            
+                cropped_img = img[y1:y2, x1:x2]
+                out_name = f"{pdf_name}_p{page_idx}_f{i}.png"
+                out_path = os.path.join(images_dir, out_name)
+                cv2.imwrite(out_path, cropped_img)
+                            
+                context = find_cap(text_blovk_img, (x1, y1, x2, y2), fig.type)
+
+                try:
+                    formatted_prompt = f"You are analysing scientific plots. Describe this {fig.type.lower()}. Extract textual information, data and trends.\n\nSurrounding Document Context:\n{context}. Answer in 3-5 sentences at max.  "
+                    response = ollama.chat(
+                        model="gemma4:latest",
+                        messages=[{
+                            'role': 'user',
+                            'content': formatted_prompt,
+                            'images': [out_path] 
+                        }]
+                    )
+                    vlm_description = response['message']['content']
+                except Exception as e:
+                    print(f"Ollama failed on {out_name}: {e}")
+                    vlm_description = "Description generation failed."
+
+                corpus.append({
+                    "document": pdf_name,
+                    "citation": citation_string,
+                    "page": page_idx,
+                    "type": fig.type.lower(),
+                    "content": vlm_description,
+                    "metadata": {
+                        "image_path": out_name,
+                        "caption": context
+                    }
+                })
+    except Exception as e:
+        print(f"Failed to load or process {pdf_path}. Skipping. Error: {e}")
+    
+    return corpus
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Ingestor with Parallelization")
+    parser.add_argument("--workers", type=int, default=1, help="Number of parallel workers. Use 1 to disable parallelization, 2+ for multiprocessing.")
+    args = parser.parse_args()
+
+    with open("downloaded.json", "r") as f:
+        downloaded = json.load(f)
+        
+    detectron_weights = os.path.abspath("../model_final.pth")
+    images_dir = "../extracted_data/images"
+    os.makedirs(images_dir, exist_ok=True)
+    
+    corpus = []
+    
+    if args.workers <= 1:
+        print("Running sequentially (1 worker)...")
+        for pdf_path, citation_string in downloaded.items():
+            if not os.path.exists(pdf_path):
+                continue
+            corpus.extend(process_pdf_file(pdf_path, citation_string, detectron_weights, images_dir))
+    else:
+        print(f"Running in parallel with {args.workers} workers...")
+        with concurrent.futures.ProcessPoolExecutor(max_workers=args.workers) as executor:
+            futures = []
+            for pdf_path, citation_string in downloaded.items():
+                if not os.path.exists(pdf_path):
+                    continue
+                futures.append(executor.submit(process_pdf_file, pdf_path, citation_string, detectron_weights, images_dir))
+            
+            for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing PDFs"):
+                try:
+                    local_corpus = future.result()
+                    corpus.extend(local_corpus)
+                except Exception as e:
+                    print(f"Worker failed: {e}")
 
     print("Initializing Chunking and Embedding Database...")
     embeddings = OllamaEmbeddings(model="nomic-embed-text")
@@ -189,7 +219,7 @@ def main():
                         }
                     })
             except Exception as e:
-                tqdm.write(f"Chunker failed: {e}")
+                print(f"Chunker failed: {e}")
                 
     documents = []
     metadatas = []
@@ -277,4 +307,5 @@ def main():
     print("Success! BM25 index rebuilt.")
 
 if __name__ == "__main__":
+    multiprocessing.set_start_method('spawn', force=True)
     main()
