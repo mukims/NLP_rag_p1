@@ -143,8 +143,16 @@ def main():
             messages=messages,
             stream=False
         )
+        
+        prompt_tokens = getattr(response, 'prompt_eval_count', 'N/A')
+        completion_tokens = getattr(response, 'eval_count', 'N/A')
+        print(f"\n[Token Stats] Submitted: {prompt_tokens} | Generated: {completion_tokens}")
+
         print("\n=== AI ASSISTANT SUGGESTION ===")
-        print(response['message']['content'])
+        try:
+            print(response.message.content)
+        except AttributeError:
+            print(response['message']['content'])
         print("===============================\n")
     except Exception as e:
         print(f"\nError communicating with Ollama: {e}")

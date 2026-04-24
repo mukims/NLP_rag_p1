@@ -127,7 +127,10 @@ def process_pdf_file(pdf_path, citation_string, detectron_weights, images_dir):
                             'images': [out_path] 
                         }]
                     )
-                    vlm_description = response['message']['content']
+                    try:
+                        vlm_description = response.message.content
+                    except AttributeError:
+                        vlm_description = response['message']['content']
                 except Exception as e:
                     print(f"Ollama failed on {out_name}: {e}")
                     vlm_description = "Description generation failed."

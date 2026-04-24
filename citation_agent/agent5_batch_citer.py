@@ -16,7 +16,11 @@ def needs_citation(sentence):
     prompt = f"Does the following sentence state a factual scientific claim that requires a citation? Answer with only 'YES' or 'NO'.\n\nSentence: {sentence}"
     try:
         response = ollama.chat(model="gemma4:latest", messages=[{"role": "user", "content": prompt}])
-        return "YES" in response['message']['content'].upper()
+        try:
+            ans = response.message.content.upper()
+        except AttributeError:
+            ans = response['message']['content'].upper()
+        return "YES" in ans
     except Exception as e:
         print(f"Error checking if citation needed: {e}")
         return False
@@ -106,7 +110,15 @@ def main():
                         {"role": "user", "content": user_prompt}
                     ]
                 )
-                cited_sentence = response['message']['content'].strip()
+                try:
+                    cited_sentence = response.message.content.strip()
+                except AttributeError:
+                    cited_sentence = response['message']['content'].strip()
+                
+                prompt_tokens = getattr(response, 'prompt_eval_count', 'N/A')
+                completion_tokens = getattr(response, 'eval_count', 'N/A')
+                print(f" -> [Token Stats] Submitted: {prompt_tokens} | Generated: {completion_tokens}")
+                
                 print(f" -> Cited: {cited_sentence}")
                 cited_sentences.append(cited_sentence)
             except Exception as e:
