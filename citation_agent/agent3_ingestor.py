@@ -152,11 +152,7 @@ def process_pdf_file(pdf_path, citation_string, detectron_weights, images_dir):
     return corpus
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Ingestor with Parallelization")
-    parser.add_argument("--workers", type=int, default=1, help="Number of parallel workers. Use 1 to disable parallelization, 2+ for multiprocessing.")
-    args = parser.parse_args()
-
+def run_ingestor(workers=1):
     with open("downloaded.json", "r") as f:
         downloaded = json.load(f)
         
@@ -166,15 +162,15 @@ def main():
     
     corpus = []
     
-    if args.workers <= 1:
+    if workers <= 1:
         print("Running sequentially (1 worker)...")
         for pdf_path, citation_string in downloaded.items():
             if not os.path.exists(pdf_path):
                 continue
             corpus.extend(process_pdf_file(pdf_path, citation_string, detectron_weights, images_dir))
     else:
-        print(f"Running in parallel with {args.workers} workers...")
-        with concurrent.futures.ProcessPoolExecutor(max_workers=args.workers) as executor:
+        print(f"Running in parallel with {workers} workers...")
+        with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as executor:
             futures = []
             for pdf_path, citation_string in downloaded.items():
                 if not os.path.exists(pdf_path):
@@ -310,5 +306,9 @@ def main():
     print("Success! BM25 index rebuilt.")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Ingestor with Parallelization")
+    parser.add_argument("--workers", type=int, default=1, help="Number of parallel workers. Use 1 to disable parallelization, 2+ for multiprocessing.")
+    args = parser.parse_args()
+
     multiprocessing.set_start_method('spawn', force=True)
-    main()
+    run_ingestor(workers=args.workers)

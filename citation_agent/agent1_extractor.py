@@ -60,7 +60,7 @@ def extract_citations(pdf_path):
     print(f"Successfully extracted {len(citations)} citation entries.")
     return citations
 
-if __name__ == "__main__":
+def run_extractor():
     all_citations = []
     
     for raw_pdf in glob.glob("raw/*.pdf"):
@@ -75,3 +75,6 @@ if __name__ == "__main__":
         json.dump(unique_citations, f, indent=4)
         
     print(f"Saved {len(unique_citations)} unique citations to {out_file}")
+
+if __name__ == "__main__":
+    run_extractor()

@@ -25,17 +25,12 @@ def needs_citation(sentence):
         print(f"Error checking if citation needed: {e}")
         return False
 
-def main():
-    parser = argparse.ArgumentParser(description="Batch Citation Agent")
-    parser.add_argument("--file", type=str, required=True, help="Path to the draft text file.")
-    parser.add_argument("--out", type=str, default="cited_draft.txt", help="Path to save the cited draft.")
-    args = parser.parse_args()
-
-    if not os.path.exists(args.file):
-        print(f"File {args.file} not found.")
+def run_batch_citer(file_path, out_path="cited_draft.txt"):
+    if not os.path.exists(file_path):
+        print(f"File {file_path} not found.")
         return
 
-    with open(args.file, "r") as f:
+    with open(file_path, "r") as f:
         draft_text = f.read()
 
     print("Loading Databases...")
@@ -130,14 +125,19 @@ def main():
 
     final_draft = " ".join(cited_sentences)
     
-    with open(args.out, "w") as f:
+    with open(out_path, "w") as f:
         f.write(final_draft)
-    print(f"\nSaved cited draft to {args.out}")
+    print(f"\nSaved cited draft to {out_path}")
     
-    mapping_file = args.out.replace(".txt", "_citations.json")
+    mapping_file = out_path.replace(".txt", "_citations.json")
     with open(mapping_file, "w") as f:
         json.dump(citation_mapping, f, indent=4)
     print(f"Saved citation mapping to {mapping_file}")
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Batch Citation Agent")
+    parser.add_argument("--file", type=str, required=True, help="Path to the draft text file.")
+    parser.add_argument("--out", type=str, default="cited_draft.txt", help="Path to save the cited draft.")
+    args = parser.parse_args()
+    
+    run_batch_citer(args.file, args.out)

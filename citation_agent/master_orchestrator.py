@@ -1,6 +1,5 @@
 import os
 import time
-import subprocess
 import threading
 import sys
 try:
@@ -10,8 +9,13 @@ except ImportError:
     print("Error: 'watchdog' package is not installed. Please run: pip install watchdog")
     sys.exit(1)
 
+from agent_graph import process_event
+
 COOLDOWN_SECONDS = 30
 DRAFT_COOLDOWN_SECONDS = 2
+WORKERS = 4
+RAW_DIR = "raw"
+DRAFTS_DIR = "drafts"
 WORKERS = 4
 RAW_DIR = "raw"
 DRAFTS_DIR = "drafts"
@@ -72,24 +76,8 @@ class Orchestrator:
             self.pdf_run_pending = False
 
         try:
-            print("\n" + "="*50)
-            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Starting Ingestion Pipeline...")
-            print("="*50)
-            
-            print("[Orchestrator] Step 1: Extracting Citations...")
-            subprocess.run(["python", "agent1_extractor.py"], check=True)
-            
-            print("\n[Orchestrator] Step 2: Fetching Papers...")
-            subprocess.run(["python", "agent2_fetcher.py"], check=True)
-            
-            print(f"\n[Orchestrator] Step 3: Ingesting Papers (Workers: {WORKERS})...")
-            subprocess.run(["python", "agent3_ingestor.py", "--workers", str(WORKERS)], check=True)
-            
-            print("\n" + "="*50)
-            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Ingestion Pipeline Complete!")
-            print("="*50 + "\n")
-        except subprocess.CalledProcessError as e:
-            print(f"\n[Orchestrator] ERROR: Pipeline failed with exit code {e.returncode}.")
+            print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Notifying Supervisor Agent of new PDFs...")
+            process_event("New PDFs have been added to the raw/ directory. Please extract citations from them, fetch the papers, and ingest them.")
         except Exception as e:
             print(f"\n[Orchestrator] UNEXPECTED ERROR: {e}")
         finally:
@@ -110,13 +98,9 @@ class Orchestrator:
             timer.start()
 
     def run_agent5(self, filepath):
-        out_path = filepath.replace(".txt", "_cited.txt")
         try:
-            print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Auto-Citing Draft: {filepath}...")
-            subprocess.run(["python", "agent5_batch_citer.py", "--file", filepath, "--out", out_path], check=True)
-            print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] Draft successfully cited at: {out_path}\n")
-        except subprocess.CalledProcessError as e:
-            print(f"\n[Orchestrator] ERROR: Draft citation failed with exit code {e.returncode}.")
+            print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] Notifying Supervisor Agent of new draft: {filepath}...")
+            process_event(f"A new draft text file needs citation processing. The file is located at: {filepath}. Please use the batch cite tool.")
         except Exception as e:
             print(f"\n[Orchestrator] UNEXPECTED ERROR during draft citing: {e}")
 
