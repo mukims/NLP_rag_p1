@@ -1,0 +1,49 @@
+user_input,retrieved_contexts,response,faithfulness,answer_relevancy
+"Condensed matter physics is a fertile ground for developing inverse problems, but unfortunately, it has been overlooked over development of forward techniques. Deriving a mathematical description of the N-particle system from the observed scattering data is not an easy task, especially if the interactions are unknown. Recent
+experimental advancements have benefited from characterisation techniques like Scanning Tunnelling Microscopy (STM) or Atomic force Microscopy (AFM).","['Scanning probe microscopy techniques and in particular STM might offer the solution.', 'scattering experiments,3 which can be described mathematically as inverse problems. A', 'precursor. By combining high-resolution atomic force microscopy, scanning tunneling']","The most effective revision involves placing citations where they provide explicit, research-backed claims, lending authority to your statements about the mathematical framework and the experimental tools used.
+
+Here is the rewritten snippet:
+
+***
+
+### Revised User Draft Text
+
+Condensed matter physics is a fertile ground for developing inverse problems; however, this field remains somewhat overshadowed by the development of forward techniques. Indeed, deriving a precise mathematical description of an N-particle system from observed scattering data constitutes a challenging inverse problem, particularly when the underlying interactions are unknown [16]. Recent experimental advancements in the field have significantly benefited from sophisticated characterization techniques, such as Scanning Tunneling Microscopy (STM) or Atomic Force Microscopy (AFM) [49].
+
+***
+
+### Explanation of Changes and Citation Usage
+
+I have incorporated two citations to strengthen the technical foundation of your argument.
+
+1.  **Placement of Citation [16]:**
+    *   **Original Text Section:** ""Deriving a mathematical description of the N-particle system from the observed scattering data is not an easy task, especially if the interactions are unknown.""
+    *   **Why [16] is used:** Citation [16] specifically discusses ""Numerical methods for the inverse problem of density functional theory,"" and its context directly links *scattering experiments* to the mathematical framework of *inverse problems*. By placing this citation here, you are citing established literature that validates the difficulty and the mathematical nature of deriving system parameters from scattering measurements.
+
+2.  **Placement of Citation [49]:**
+    *   **Original Text Section:** ""Recent experimental advancements have benefited from characterisation techniques like Scanning Tunnelling Microscopy (STM) or Atomic force Microscopy (AFM).""
+    *   **Why [49] is used:** Citation [49] pertains to studies that explicitly combine and utilize both **Atomic Force Microscopy (AFM)** and **Scanning Tunneling Microscopy (STM)** for the characterization of synthesized nanoscale materials. This citation perfectly supports your claim about the recent advancement and the utility of these two specific, powerful techniques.
+
+**Note on [8]:** I opted to use [49] instead of [8] because [49] provides broader support for the *combination* of STM and AFM characterization, which is what your general concluding sentence implies. [8] is more narrowly focused on using STM for *tailoring* graphene nanoribbons, making [49] a better fit for the general claim about ""experimental advancements.""",,0.4361568587012394
+The expansion of computational power and characterisation techniques over the past few decades is unquestionably one of the key reasons for the unprecedented level of accuracy in material development,"['Carbon dots (CDs) have emerged over the past two decades as a versatile class of carbon-based nanomaterials with unique optical, electronic, and...', 'combination of both experiments and computer simulations has allowed to cut substantially the time and cost of materials design.17–20 The constant increase in computing power and the development of more efﬁcient codes also allowed for computa- tional high-throughput studies21 of large material groups in order to screen for the ideal experimental candidates. These large-scale simulations and calculations together with experimental high- throughput studies22–25 are producing an enormous amount of data making possible the use of machine learning methods to materials science. As these algorithms start to ﬁnd their place, they are heralding a second computational revolution.', 'functional materials is to select the reactants and their ratios. In the past decades,']","The synergy between the expansion of computational power and advanced characterization techniques over the past few decades has been a key driver, enabling the unprecedented level of accuracy in modern material development [40].
+
+***
+
+**Explanation of Changes:**
+
+I inserted the citation **[40]** at the end of the sentence.
+
+This citation is the most appropriate because Source 2 ([40]) explicitly discusses how the ""constant increase in computing power"" and efficient codes have allowed for ""computational high-throughput studies,"" which directly supports your argument that computational expansion is a fundamental cause of improved accuracy and capability in materials science. While your draft text is a general claim, the context [40] provides the technical backing for this historical trend, framing it as a core driver of the field.",0.4,0.8404289676432376
+The inversion methodology can be written in terms of various degrees of freedom. A multi-terminal approach is not only viable for the experimental set-ups but also allows to interrogate the system in various ways.,"['The discovery of room temperature ballistic conduction in epitaxial graphene nanoribbons is important not only for science but also for technology. It allows interconnected ballistic graphene structures to be patterned using conventional microelectronics methods.', 'inversion methods.', 'RMT originated in nuclear physics and was conceived as a statistical approach to systems with many degrees of freedom. However, RMT applies also to few–degrees–of–freedom systems with chaotic classical dynamics. This observation is of recent origin, and it forms the content of the present section.']","**Rewritten Text:**
+
+The inversion methodology can be written in terms of various degrees of freedom [16]. A multi-terminal approach is not only viable for the experimental set-ups but also allows to interrogate the system in various ways, as seen in the study of epitaxial graphene nanoribbons [53].
+
+***
+
+**Explanation of Changes:**
+
+1.  **Insertion of [16]:** I inserted the citation **[16]** after the phrase ""The inversion methodology can be written in terms of various degrees of freedom.""
+    *   **Support:** Source [16] (Jensen and Wasserman) provides a detailed discussion of **""Numerical methods for the inverse problem.""** This context directly supports the technical claim made in the first sentence regarding the mathematical framework of ""inversion methodology.""
+
+2.  **Insertion of [53]:** I inserted the citation **[53]** after the phrase ""...allows to interrogate the system in various ways.""
+    *   **Support:** Source [53] (Baringhaus et al.) describes the physical realization of complex, interconnected structures (graphene nanoribbons) and their examination using microelectronics methods. This experimental focus validates the claim that a multi-terminal approach is both *viable* for setup *and* necessary for comprehensive *interrogation* of the physical system.",,0.6077258425824964

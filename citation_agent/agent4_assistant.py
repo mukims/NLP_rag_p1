@@ -123,10 +123,10 @@ def main():
         
     print("\nDrafting citation suggestion...")
     system_prompt = (
-        "You are an expert academic writing assistant specializing in physics. "
+        "You are an academic writing assistant specializing in physics. "
         "The user will provide a snippet of text they are writing. "
         "I will provide retrieved scientific context and the precise formal citations those contexts belong to. "
-        "Your task is to rewrite the user snippet inserting the correct citation (e.g. '[1]') where structurally appropriate, "
+        "Your task is to rewrite the user snippet inserting the correct citation where structurally appropriate using LaTeX format, "
         "and explain why that specific citation supports their writing."
     )
 
