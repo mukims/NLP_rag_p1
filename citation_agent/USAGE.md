@@ -1,6 +1,6 @@
 # Citation Agent — Detailed Usage Guide
 
-This document is the single authoritative reference for running the five-agent RAG citation pipeline. Read it top-to-bottom before executing any script.
+This document is the single authoritative reference for running the multi-agent RAG citation pipeline. Read it top-to-bottom before executing any script.
 
 ---
 
@@ -17,15 +17,17 @@ This document is the single authoritative reference for running the five-agent R
    - [Agent 3 — Ingestor](#agent-3--ingestor-agent3_ingestorpy)
    - [Agent 4 — Interactive Assistant](#agent-4--interactive-assistant-agent4_assistantpy)
    - [Agent 5 — Batch Citer](#agent-5--batch-citer-agent5_batch_citerpy)
-7. [Output Files Reference](#7-output-files-reference)
-8. [Configuration Reference](#8-configuration-reference)
-9. [Troubleshooting](#9-troubleshooting)
+7. [LangGraph Supervisor Agent](#7-langgraph-supervisor-agent)
+8. [RAG Evaluation (Ragas)](#8-rag-evaluation-ragas)
+9. [Output Files Reference](#9-output-files-reference)
+10. [Configuration Reference](#10-configuration-reference)
+11. [Troubleshooting](#11-troubleshooting)
 
 ---
 
 ## 1. System Overview
 
-The pipeline automates the entire lifecycle from raw scientific PDFs → cited LaTeX drafts using a chain of five specialised agents:
+The pipeline automates the entire lifecycle from raw scientific PDFs → cited LaTeX drafts using a chain of five specialised agents, coordinated by a LangGraph-based supervisor:
 
 | Agent | Script | Role |
 |-------|--------|------|
@@ -34,11 +36,14 @@ The pipeline automates the entire lifecycle from raw scientific PDFs → cited L
 | 3 | `agent3_ingestor.py` | Multimodal ingestion into ChromaDB + BM25 |
 | 4 | `agent4_assistant.py` | Interactive single-sentence citation helper |
 | 5 | `agent5_batch_citer.py` | Automated full-draft batch citation |
-| — | `master_orchestrator.py` | Watchdog that drives Agents 1–3 and 5 hands-off |
+| — | `agent_graph.py` | **LangGraph supervisor** — LLM-driven tool-calling agent that decides which tools (agents) to invoke |
+| — | `master_orchestrator.py` | Watchdog daemon — monitors directories and delegates events to the LangGraph supervisor |
+| — | `evaluate_rag.py` | RAG evaluation using the Ragas framework |
 
 **Local models used (via Ollama):**
-- `gemma4:latest` — vision-language model for figure description (Agent 3), citation judgement (Agent 5), and response generation (Agents 4 & 5).
+- `gemma4:latest` — vision-language model for figure description (Agent 3), citation judgement (Agent 5), response generation (Agents 4 & 5), and supervisor reasoning (Agent Graph).
 - `nomic-embed-text` — text embedding model used for dense vector search (Agents 3, 4, 5).
+- `deepseek-r1:14b` — evaluator LLM used by the Ragas evaluation script only.
 
 ---
 
@@ -56,10 +61,10 @@ sudo apt-get install libgl1-mesa-glx libglib2.0-0
 
 ### Conda / Pip Environment
 
-All agents must be run inside the same `ragprod` (or equivalent) conda environment.
+All agents must be run inside the `rag_prod` conda environment.
 
 ```bash
-conda activate ragprod
+conda activate rag_prod
 ```
 
 Install Python dependencies:
@@ -68,7 +73,9 @@ Install Python dependencies:
 pip install watchdog requests chromadb rank-bm25 \
             pymupdf opencv-python numpy tqdm \
             layoutparser detectron2 \
-            langchain-ollama langchain-experimental ollama
+            langchain-ollama langchain-experimental ollama \
+            langgraph langgraph-prebuilt langchain-core \
+            ragas datasets
 ```
 
 > **Note:** `detectron2` installation can be version-sensitive. Follow the official [Detectron2 install guide](https://detectron2.readthedocs.io/en/latest/tutorials/install.html) matching your CUDA version.
@@ -82,7 +89,13 @@ ollama pull gemma4:latest
 ollama pull nomic-embed-text
 ```
 
-Verify both models are available:
+For RAG evaluation only:
+
+```bash
+ollama pull deepseek-r1:14b
+```
+
+Verify models are available:
 
 ```bash
 ollama list
@@ -112,18 +125,22 @@ citation_agent/
 ├── downloaded.json             # Output of Agent 2 — filepath → citation string map
 ├── failed_downloads.json       # Output of Agent 2 — failed citation list with reasons
 ├── bm25_index.pkl              # BM25 sparse index rebuilt after every Agent 3 run
+├── sample_inputs               # Sample queries for RAG evaluation
+├── evaluation_results.csv      # Output of evaluate_rag.py
 ├── agent1_extractor.py
 ├── agent2_fetcher.py
 ├── agent3_ingestor.py
 ├── agent4_assistant.py
 ├── agent5_batch_citer.py
-└── master_orchestrator.py
+├── agent_graph.py              # LangGraph supervisor agent
+├── master_orchestrator.py
+└── evaluate_rag.py
 
 ../extracted_data/
 └── images/                     # Cropped figure/table images extracted by Agent 3
 ```
 
-> **Important:** The `physics_vectordb/` and `bm25_index.pkl` are excluded from git (see `.gitignore`). They are built locally by Agent 3 and can be large.
+> **Important:** The `physics_vectordb/`, `bm25_index.pkl`, `downloaded.json`, and `pulled_pdfs/` are excluded from git (see `.gitignore`). They are built locally and can be large.
 
 ---
 
@@ -144,19 +161,31 @@ physics_vectordb/  (ChromaDB)  +  bm25_index.pkl  +  ../extracted_data/images/
     ├──▶  [Agent 4] Interactive per-sentence assistant  →  stdout suggestion
     │
     └──▶  [Agent 5] Batch file processor  →  <draft>_cited.txt  +  <draft>_citations.json
+
+────────────────────────────────────────────────
+Orchestration Layer (master_orchestrator.py):
+  watchdog file monitors ──▶ agent_graph.py (LangGraph Supervisor)
+                                 │
+                                 ▼
+                            gemma4:latest decides which tool to call
+                                 │
+                            ┌────┴────┐
+                            ▼         ▼
+                      Agents 1-3   Agent 5
+                      (PDF flow)   (Draft flow)
 ```
 
 ---
 
 ## 5. Running the Full Pipeline (Automated — Recommended)
 
-The `master_orchestrator.py` script runs as a persistent background daemon that watches two directories and drives the entire pipeline automatically.
+The `master_orchestrator.py` script runs as a persistent background daemon that watches two directories. When events occur, it delegates to the **LangGraph supervisor agent** (`agent_graph.py`), which uses `gemma4:latest` to reason about which tools (agents) to invoke.
 
 ### Start the Orchestrator
 
 ```bash
 cd /path/to/citation_agent
-conda activate ragprod
+conda activate rag_prod
 python master_orchestrator.py
 ```
 
@@ -174,10 +203,7 @@ Press Ctrl+C to stop.
 1. Copy one or more source PDFs into the `raw/` directory.
 2. The orchestrator detects the new file(s) immediately.
 3. It starts a **30-second cooldown timer**, resetting it each time another PDF is dropped — this lets you batch-drop many files before the pipeline fires.
-4. After the cooldown expires, it runs Agents 1, 2, and 3 **sequentially and automatically**:
-   - Agent 1: Extracts reference strings → `extracted_citations.json`
-   - Agent 2: Fetches open-access PDFs → `pulled_pdfs/` and `downloaded.json`
-   - Agent 3: Ingests everything into ChromaDB with 4 parallel workers
+4. After the cooldown expires, it sends a natural-language message to the **LangGraph supervisor**, which autonomously decides to call `extract_citations_tool`, `fetch_papers_tool`, and `ingest_papers_tool` in sequence.
 
 > **If a pipeline run is already in progress** when you drop more files, the new files are queued and processed in a second run automatically after the current one finishes.
 
@@ -185,7 +211,7 @@ Press Ctrl+C to stop.
 
 1. Copy or save a plain-text draft (`.txt`) into the `drafts/` directory.
 2. The orchestrator detects it within 2 seconds.
-3. It runs Agent 5 automatically on that file.
+3. It sends a message to the LangGraph supervisor, which calls `batch_cite_tool` with the file path.
 4. Output is saved as `drafts/<your_file>_cited.txt` with a companion `drafts/<your_file>_citations.json` mapping.
 
 ### Stopping the Orchestrator
@@ -196,11 +222,11 @@ Press `Ctrl+C`. All pending timers are cancelled cleanly before exit.
 
 ## 6. Running Agents Manually (Step-by-Step)
 
-All commands below must be run from inside the `citation_agent/` directory with your conda environment active.
+All commands below must be run from inside the `citation_agent/` directory with `rag_prod` active.
 
 ```bash
 cd /path/to/citation_agent
-conda activate ragprod
+conda activate rag_prod
 ```
 
 ---
@@ -226,8 +252,7 @@ python agent1_extractor.py
 ```json
 [
     "[1] A. Smith et al., \"Quantum Coherence\", Phys. Rev. Lett., 2021.",
-    "[2] B. Jones, \"Dark Matter Survey\", arXiv:2103.01234, 2021.",
-    ...
+    "[2] B. Jones, \"Dark Matter Survey\", arXiv:2103.01234, 2021."
 ]
 ```
 
@@ -369,6 +394,7 @@ The Planck 2018 results provide precise cosmological parameters including the da
 
 **Notes:**
 - Agent 4 is **read-only** — it never modifies the database.
+- The `hybrid_search` function defined in this file is also imported by Agent 5 and `evaluate_rag.py`.
 - The hybrid search retrieves `max(15, top_k * 3)` candidates from each retrieval method before fusing, so increasing `--top_k` also broadens the initial candidate pool.
 - The agent must be run from the `citation_agent/` directory so it can locate `./physics_vectordb` and `./bm25_index.pkl`.
 
@@ -398,30 +424,12 @@ python agent5_batch_citer.py --file drafts/my_draft.txt --out drafts/my_draft_ci
 | `--file` | str | — | **Yes** | Path to the input plain-text draft. |
 | `--out` | str | `cited_draft.txt` | No | Path for the output cited draft. Defaults to current directory. |
 
-**Example:**
-
-```bash
-python agent5_batch_citer.py \
-  --file drafts/introduction.txt \
-  --out drafts/introduction_cited.txt
-```
-
 **Output files:**
 
 | File | Contents |
 |------|----------|
 | `drafts/introduction_cited.txt` | Full draft with `\cite{cite_key}` tags inserted inline |
 | `drafts/introduction_citations.json` | `{ "cite_1": "[3] Planck Collaboration ...", "cite_2": "..." }` |
-
-**Example sentence lifecycle:**
-
-```
-Input:  "Gravitational waves were first directly detected in 2015."
-→ gemma4: "YES" (factual claim)
-→ Hybrid search returns chunk from LIGO paper → cite_1
-→ gemma4 rewrites: "Gravitational waves were first directly detected in 2015 \cite{cite_1}."
-Output: "Gravitational waves were first directly detected in 2015 \cite{cite_1}."
-```
 
 **Notes:**
 - Sentences shorter than 4 words are **always skipped** (no citation check performed).
@@ -431,7 +439,91 @@ Output: "Gravitational waves were first directly detected in 2015 \cite{cite_1}.
 
 ---
 
-## 7. Output Files Reference
+## 7. LangGraph Supervisor Agent
+
+### Overview (`agent_graph.py`)
+
+The orchestrator no longer calls agents directly via subprocess. Instead, it delegates to a **LangGraph ReAct-style agent** that uses `gemma4:latest` (with tool-calling) to autonomously decide which pipeline steps to run.
+
+### How It Works
+
+1. The orchestrator sends a natural-language message (e.g. *"New PDFs have been added to the raw/ directory…"*) to `process_event()`.
+2. `process_event()` feeds this message into a compiled LangGraph `StateGraph`.
+3. The graph has two nodes:
+   - **`agent`** — calls `gemma4:latest` (with tools bound) to reason and decide the next action.
+   - **`tools`** — executes the selected tool and returns the result.
+4. The graph loops (`agent → tools → agent → …`) until the LLM decides no more tools are needed, at which point it emits a final text response and the graph terminates.
+
+### Available Tools
+
+| Tool Name | Wraps | Description |
+|-----------|-------|-------------|
+| `extract_citations_tool` | `agent1_extractor.run_extractor()` | Extracts citations from PDFs in `raw/` |
+| `fetch_papers_tool` | `agent2_fetcher.fetch_papers()` | Downloads referenced papers |
+| `ingest_papers_tool` | `agent3_ingestor.run_ingestor(workers)` | Ingests papers into ChromaDB + BM25 (default 4 workers) |
+| `batch_cite_tool` | `agent5_batch_citer.run_batch_citer(path)` | Cites a draft text file |
+
+### Running Standalone
+
+You can invoke the agent graph directly without the file watchers:
+
+```bash
+python agent_graph.py
+```
+
+This sends a default message (*"A new PDF was dropped in the raw directory. Please process it."*) to the supervisor. You can also import and call `process_event()` from your own scripts:
+
+```python
+from agent_graph import process_event
+process_event("Please extract citations and fetch the papers.")
+```
+
+---
+
+## 8. RAG Evaluation (Ragas)
+
+### Overview (`evaluate_rag.py`)
+
+An automated evaluation script that measures the quality of the RAG pipeline using the [Ragas](https://docs.ragas.io/) framework.
+
+### What It Does
+
+1. Loads the ChromaDB collection and BM25 index.
+2. Parses sample queries from the `sample_inputs` file (queries separated by blank lines).
+3. For each query, runs the full RAG pipeline (hybrid search → `gemma4:latest` generation).
+4. Evaluates the responses using **`deepseek-r1:14b`** as the judge LLM with two metrics:
+   - **Faithfulness** — is the answer grounded in the retrieved context?
+   - **Answer Relevancy** — is the answer relevant to the question?
+5. Saves detailed results to `evaluation_results.csv`.
+
+### Prerequisites
+
+```bash
+ollama pull deepseek-r1:14b
+```
+
+### Run
+
+```bash
+python evaluate_rag.py
+```
+
+**Input:** `sample_inputs` (plain text, queries separated by blank lines)
+
+**Output:** `evaluation_results.csv` — per-query faithfulness and answer relevancy scores.
+
+### Configuration
+
+| Variable | Line | Description |
+|----------|------|-------------|
+| Evaluator LLM | 130 | `deepseek-r1:14b` — change to use a different judge model |
+| Evaluator embeddings | 131 | `nomic-embed-text:latest` |
+| `timeout` | 133 | 1800s (30 min) — increase for very large evaluation sets |
+| `max_retries` | 133 | 5 retries per evaluation call |
+
+---
+
+## 9. Output Files Reference
 
 | File | Created by | Description |
 |------|-----------|-------------|
@@ -443,10 +535,11 @@ Output: "Gravitational waves were first directly detected in 2015 \cite{cite_1}.
 | `../extracted_data/images/` | Agent 3 | Cropped figure/table PNG images named `<pdf>_p<page>_f<fig_idx>.png` |
 | `<draft>_cited.txt` | Agent 5 | Draft with `\cite{key}` tags inserted |
 | `<draft>_citations.json` | Agent 5 | Maps `cite_N` keys → full citation strings for use in a BibTeX builder |
+| `evaluation_results.csv` | `evaluate_rag.py` | Per-query Ragas evaluation scores |
 
 ---
 
-## 8. Configuration Reference
+## 10. Configuration Reference
 
 Hardcoded constants that can be changed directly in the scripts:
 
@@ -460,6 +553,14 @@ Hardcoded constants that can be changed directly in the scripts:
 | `RAW_DIR` | `"raw"` | Directory watched for new source PDFs |
 | `DRAFTS_DIR` | `"drafts"` | Directory watched for new/modified draft `.txt` files |
 
+### `agent_graph.py`
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| LLM model | `gemma4:latest` | The model used by the supervisor agent for tool-calling decisions |
+| `temperature` | `0` | Deterministic tool selection |
+| `ingest_papers_tool` workers | `4` | Default worker count when the supervisor calls the ingest tool |
+
 ### `agent2_fetcher.py`
 
 | Variable | Line | Description |
@@ -470,10 +571,10 @@ Hardcoded constants that can be changed directly in the scripts:
 
 | Variable | Line | Description |
 |----------|------|-------------|
-| `detectron_weights` | 163 | Path to `model_final.pth` — defaults to `../model_final.pth` |
-| `images_dir` | 164 | Where cropped figures are saved — defaults to `../extracted_data/images` |
-| `breakpoint_threshold_amount` | 193 | SemanticChunker threshold (90th percentile) — lower = more chunks |
-| `batch_size` | 270 | ChromaDB embedding batch size — reduce if hitting memory limits |
+| `detectron_weights` | 159 | Path to `model_final.pth` — defaults to `../model_final.pth` |
+| `images_dir` | 160 | Where cropped figures are saved — defaults to `../extracted_data/images` |
+| `breakpoint_threshold_amount` | 189 | SemanticChunker threshold (90th percentile) — lower = more chunks |
+| `batch_size` | 266 | ChromaDB embedding batch size — reduce if hitting memory limits |
 
 ### `agent4_assistant.py`
 
@@ -483,7 +584,7 @@ Hardcoded constants that can be changed directly in the scripts:
 
 ---
 
-## 9. Troubleshooting
+## 11. Troubleshooting
 
 ### `pdftotext: command not found`
 ```bash
@@ -497,6 +598,11 @@ sudo apt-get install poppler-utils
 ### `No module named 'watchdog'`
 ```bash
 pip install watchdog
+```
+
+### `No module named 'langgraph'`
+```bash
+pip install langgraph langgraph-prebuilt
 ```
 
 ### ChromaDB collection `physics_papers` not found (Agent 4 / 5)
@@ -516,3 +622,8 @@ ollama serve
 
 ### Agent 5 — All sentences marked "NO citation needed"
 This typically means `gemma4:latest` is being cautious. You can lower the threshold by modifying the prompt in the `needs_citation()` function (line 16 of `agent5_batch_citer.py`) to be more permissive, or run Agent 4 interactively on specific sentences instead.
+
+### LangGraph supervisor loops or picks wrong tools
+The supervisor relies on `gemma4:latest` tool-calling. If it loops or selects incorrect tools, try:
+- Ensuring Ollama is serving the latest `gemma4` weights (`ollama pull gemma4:latest`).
+- Running the agents manually (Section 6) to bypass the supervisor entirely.
