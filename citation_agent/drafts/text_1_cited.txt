@@ -12,9 +12,14 @@ energy-efficient transistors, memory devices, and sensors \cite{cite_5}.
 The field of spin-tronics also holds promise for applications in quantum computing, 
 where the spin of an electron can be used to represent a quantum bit, or qubit \cite{cite_7}. 
 In addition to the spin, the electron has other properties that have been used in various technological applications,
- such as the spin-orbit interaction which causes electrons to change their spin states and that can be exploited for
-  use in data storage and logic operations as well as other applications such as quantum computing \cite{cite_8}.
-   The discovery of graphene and other atomically-thin two dimensional mate-rials opens the path to effectively c
-   ontrol and tune the required properties for disruptive technologies \cite{cite_8}. Two dimensional materials 
-   such as graphene and transition metal dichalcogenides (Transition Metal Dichalcogenide (TMDC)s) 
-   feature another way to control the so-called valley degree of freedom electrons display due to the crystal structure of the material \cite{cite_12}. The valleys are characterized by different electron spin and angular momentum states, and can be used to encode and manipulate quantum information \cite{cite_13}. The valley degree of freedom can also be used to create new types of electronic and optoelectronic devices, such as valley transistors and valley-based sensors \cite{cite_4}. To exploit these exotic flavours of spin and valley in devices, it is necessary to actively control their electronic and magnetic properties at the nanoscale \cite{cite_15}.
+such as the spin-orbit interaction which causes electrons to change their spin states and that can be exploited for
+use in data storage and logic operations as well as other applications such as quantum computing \cite{cite_8}.
+The discovery of graphene and other atomically-thin two dimensional mate-rials opens the path to effectively c
+ontrol and tune the required properties for disruptive technologies \cite{cite_8}. Two dimensional materials 
+such as graphene and transition metal dichalcogenides (Transition Metal Dichalcogenide (TMDC)s) 
+feature another way to control the so-called valley degree of freedom electrons display due to 
+the crystal structure of the material \cite{cite_12}. The valleys are characterized by different electron spin 
+and angular momentum states, and can be used to encode and manipulate quantum information \cite{cite_13}. 
+The valley degree of freedom can also be used to create new types of electronic and optoelectronic devices, 
+such as valley transistors and valley-based sensors \cite{cite_4}. To exploit these exotic flavours of spin and
+valley in devices, it is necessary to actively control their electronic and magnetic properties at the nanoscale \cite{cite_15}.
